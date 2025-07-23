@@ -116,4 +116,5 @@ for name, model in models.items():
         'Вид': model.classes_,
         'Вероятность': proba
     })
+    
     st.sidebar.dataframe(proba_df.set_index("Вид"), use_container_width=True)
