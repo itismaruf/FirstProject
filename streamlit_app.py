@@ -53,5 +53,7 @@ for name, model in models.items():
         'Test Accuracy': round(acc_test, 2)
     })
 
-st.write("### 📊 Сравнение моделей по точности")
+st.write("### Сравнение моделей по точности")
 st.table(pd.DataFrame(results))
+
+
