@@ -1,120 +1,71 @@
+# app.py
+
 import streamlit as st
 import pandas as pd
-from sklearn.model_selection import train_test_split
-from sklearn.metrics import accuracy_score
-from sklearn.tree import DecisionTreeClassifier
-from sklearn.neighbors import KNeighborsClassifier
-import category_encoders as ce
-import plotly.express as px
+from functions import (
+    load_data, clean_data, encode_data,
+    plot_survival_by_sex, plot_survival_by_class, plot_age_distribution,
+    train_model, predict_single_passenger
+)
 
-st.set_page_config(page_title="🐧 Penguin Classifier", layout="wide")
-st.title('🐧 Penguin Classifier - Обучение и предсказание')
-st.write("## Работа с датасетом пингвинов")
+st.set_page_config(page_title="🚢 Titanic Classifier", layout="wide")
+st.title("🚢 Titanic Classifier - Предсказание выживаемости пассажиров")
 
-df = pd.read_csv("https://raw.githubusercontent.com/dataprofessor/data/master/penguins_cleaned.csv")
+# === 📥 Загрузка и предобработка данных ===
+st.subheader("📦 Загрузка и обработка данных")
+raw_df = load_data()
+df = clean_data(raw_df)
+df_encoded = encode_data(df)
 
-st.subheader("10 строк")
-st.dataframe(df.sample(10), use_container_width=True)
+st.dataframe(df.head(10), use_container_width=True)
 
-st.subheader("Визуализация данных")
+# === 📊 Визуализация данных ===
+st.subheader("📊 Визуализация данных")
+
 col1, col2 = st.columns(2)
 with col1:
-    fig1 = px.histogram(df, x="species", color="island", barmode="group", title="Распределение видов по островам")
-    st.plotly_chart(fig1, use_container_width=True)
-
+    st.plotly_chart(plot_survival_by_sex(df), use_container_width=True)
+    st.plotly_chart(plot_survival_by_class(df), use_container_width=True)
 with col2:
-    fig2 = px.scatter(df, x="bill_length_mm", y="flipper_length_mm", color="species", title="Длина клюва vs Длина крыла")
-    st.plotly_chart(fig2, use_container_width=True)
+    st.plotly_chart(plot_age_distribution(df), use_container_width=True)
 
-X = df.drop(['species'], axis=1)
-y = df['species']
+# === 🤖 Обучение модели ===
+st.subheader("🤖 Обучение модели RandomForest")
 
-X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.3, random_state=42)
+model, train_acc, test_acc = train_model(df_encoded)
 
-encoder = ce.TargetEncoder(cols=['island', 'sex'])
-X_train_encoded = encoder.fit_transform(X_train, y_train)
-X_test_encoded = encoder.transform(X_test)
+st.success(f"Train Accuracy: {train_acc:.2f}")
+st.success(f"Test Accuracy: {test_acc:.2f}")
 
-models = {
-    'Decision Tree': DecisionTreeClassifier(random_state=42),
-    'KNN': KNeighborsClassifier()
+# === 🧍 Предсказание по параметрам пользователя ===
+st.sidebar.header("🔮 Ввод данных пассажира")
+
+sex = st.sidebar.selectbox("Пол", ["male", "female"])
+pclass = st.sidebar.selectbox("Класс", [1, 2, 3])
+age = st.sidebar.slider("Возраст", 0, 80, 30)
+fare = st.sidebar.slider("Тариф", 0.0, 600.0, 50.0)
+sibsp = st.sidebar.slider("Число братьев/сестер или супругов на борту", 0, 8, 0)
+parch = st.sidebar.slider("Число родителей/детей на борту", 0, 6, 0)
+embarked = st.sidebar.selectbox("Порт посадки", ["C", "Q", "S"])
+
+user_input = {
+    "Sex": sex,
+    "Pclass": pclass,
+    "Age": age,
+    "Fare": fare,
+    "SibSp": sibsp,
+    "Parch": parch,
+    "Embarked": embarked
 }
 
-results = []
+# 🔮 Предсказание
+st.sidebar.subheader("🧠 Результат предсказания")
+prediction, proba = predict_single_passenger(model, df_encoded.drop("Survived", axis=1), user_input)
 
-for name, model in models.items():
-    model.fit(X_train_encoded, y_train)
-    acc_train = accuracy_score(y_train, model.predict(X_train_encoded))
-    acc_test = accuracy_score(y_test, model.predict(X_test_encoded))
+label = "✅ Выжил" if prediction == 1 else "❌ Не выжил"
+st.sidebar.markdown(f"### Предсказание: {label}")
 
-    results.append({
-        'Model': name,
-        'Train Accuracy': round(acc_train, 2),
-        'Test Accuracy': round(acc_test, 2)
-    })
-
-st.write("### Сравнение моделей по точности")
-st.table(pd.DataFrame(results))
-
-st.sidebar.header("Предсказание по параметрам")
-
-island_input = st.sidebar.selectbox("Остров", df['island'].unique())
-sex_input = st.sidebar.selectbox("Пол", df['sex'].unique())
-
-bill_length = st.sidebar.slider(
-    "Длина клюва (мм)",
-    float(df['bill_length_mm'].min()),
-    float(df['bill_length_mm'].max()),
-    float(df['bill_length_mm'].mean())
-)
-
-bill_depth = st.sidebar.slider(
-    "Глубина клюва (мм)",
-    float(df['bill_depth_mm'].min()),
-    float(df['bill_depth_mm'].max()),
-    float(df['bill_depth_mm'].mean())
-)
-
-flipper_length = st.sidebar.slider(
-    "Длина крыла (мм)",
-    float(df['flipper_length_mm'].min()),
-    float(df['flipper_length_mm'].max()),
-    float(df['flipper_length_mm'].mean())
-)
-
-body_mass = st.sidebar.slider(
-    "Масса тела (г)",
-    float(df['body_mass_g'].min()),
-    float(df['body_mass_g'].max()),
-    float(df['body_mass_g'].mean())
-)
-
-
-user_input = pd.DataFrame([{
-    'island': island_input,
-    'sex': sex_input,
-    'bill_length_mm': bill_length,
-    'bill_depth_mm': bill_depth,
-    'flipper_length_mm': flipper_length,
-    'body_mass_g': body_mass
-}])
-
-user_encoded = encoder.transform(user_input)
-
-for col in ['bill_length_mm', 'bill_depth_mm', 'flipper_length_mm', 'body_mass_g']:
-    user_encoded[col] = user_input[col].values
-
-
-st.sidebar.subheader("Результаты предсказания")
-
-for name, model in models.items():
-    pred = model.predict(user_encoded)[0]
-    proba = model.predict_proba(user_encoded)[0]
-
-    st.sidebar.markdown(f"**{name}: {pred}**")
-    proba_df = pd.DataFrame({
-        'Вид': model.classes_,
-        'Вероятность': proba
-    })
-    
-    st.sidebar.dataframe(proba_df.set_index("Вид"), use_container_width=True)
+st.sidebar.write("Вероятности:")
+st.sidebar.progress(proba[1])  # вероятность выживания
+st.sidebar.markdown(f"Выживание: **{proba[1]*100:.1f}%**")
+st.sidebar.markdown(f"Не выжил: **{proba[0]*100:.1f}%**")
