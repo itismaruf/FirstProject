@@ -7,7 +7,7 @@ from sklearn.impute import SimpleImputer
 
 # === Загрузка и очистка данных ===
 
-def load_data(path="data/titanic_cleaned.csv"):
+def load_data(path="https://github.com/itismaruf/FirstProject/blob/master/titanic.csv"):
     """Загрузка данных из CSV"""
     return pd.read_csv(path)
 
