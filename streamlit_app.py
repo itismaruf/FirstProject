@@ -1,71 +1,95 @@
-# app.py
-
 import streamlit as st
 import pandas as pd
-from functions import (
-    load_data, clean_data, encode_data,
-    plot_survival_by_sex, plot_survival_by_class, plot_age_distribution,
-    train_model, predict_single_passenger
-)
+import plotly.express as px
+from sklearn.ensemble import RandomForestClassifier
+from sklearn.model_selection import train_test_split
+from sklearn.metrics import accuracy_score, roc_auc_score, roc_curve
 
-st.set_page_config(page_title="🚢 Titanic Classifier", layout="wide")
-st.title("🚢 Titanic Classifier - Предсказание выживаемости пассажиров")
+st.set_page_config(page_title="Titanic Data Overview", layout="wide")
+st.title("🚢 Titanic - Анализ данных")
 
-# === 📥 Загрузка и предобработка данных ===
-st.subheader("📦 Загрузка и обработка данных")
-raw_df = load_data()
-df = clean_data(raw_df)
-df_encoded = encode_data(df)
+st.subheader("Загрузка данных")
+df = pd.read_csv("/Users/mac/Desktop/Папки/AI bootcamp/streamlit_project/cleaned_titanic.csv")
 
-st.dataframe(df.head(10), use_container_width=True)
+st.write("Случайные 5 строк из датасета:")
+st.dataframe(df.sample(5), use_container_width=True)
 
-# === 📊 Визуализация данных ===
-st.subheader("📊 Визуализация данных")
+st.write(f"🧾 Размер данных: {df.shape[0]} строк и {df.shape[1]} колонок")
 
-col1, col2 = st.columns(2)
-with col1:
-    st.plotly_chart(plot_survival_by_sex(df), use_container_width=True)
-    st.plotly_chart(plot_survival_by_class(df), use_container_width=True)
-with col2:
-    st.plotly_chart(plot_age_distribution(df), use_container_width=True)
+st.subheader("📈 Статистическое описание данных")
+st.dataframe(df.describe(), use_container_width=True)
 
-# === 🤖 Обучение модели ===
-st.subheader("🤖 Обучение модели RandomForest")
+st.subheader("🔍 Визуализация признаков")
 
-model, train_acc, test_acc = train_model(df_encoded)
+fig_sex = px.histogram(df, x="Sex", color="Survived", barmode="group",
+                       title="Выживание по полу")
+st.plotly_chart(fig_sex, use_container_width=True)
 
-st.success(f"Train Accuracy: {train_acc:.2f}")
-st.success(f"Test Accuracy: {test_acc:.2f}")
+fig_age = px.histogram(df, x="Age", color="Survived", nbins=30,
+                       title="Распределение возраста и выживаемость")
+st.plotly_chart(fig_age, use_container_width=True)
 
-# === 🧍 Предсказание по параметрам пользователя ===
-st.sidebar.header("🔮 Ввод данных пассажира")
 
-sex = st.sidebar.selectbox("Пол", ["male", "female"])
-pclass = st.sidebar.selectbox("Класс", [1, 2, 3])
-age = st.sidebar.slider("Возраст", 0, 80, 30)
-fare = st.sidebar.slider("Тариф", 0.0, 600.0, 50.0)
-sibsp = st.sidebar.slider("Число братьев/сестер или супругов на борту", 0, 8, 0)
-parch = st.sidebar.slider("Число родителей/детей на борту", 0, 6, 0)
-embarked = st.sidebar.selectbox("Порт посадки", ["C", "Q", "S"])
+st.subheader("🤖 Обучение модели")
 
-user_input = {
-    "Sex": sex,
-    "Pclass": pclass,
-    "Age": age,
-    "Fare": fare,
-    "SibSp": sibsp,
-    "Parch": parch,
-    "Embarked": embarked
-}
+with st.expander("⚙️ Настройки модели", expanded=True):
+    n_estimators = st.slider("Количество деревьев (n_estimators)", 10, 500, 100, step=10)
+    max_depth = st.slider("Максимальная глубина дерева (max_depth)", 1, 20, 5)
+    min_samples_split = st.slider("Минимум образцов для сплита (min_samples_split)", 2, 10, 2)
+    random_state = st.number_input("Random state", value=42, step=1)
+    threshold = st.slider("Порог классификации (threshold)", 0.0, 1.0, 0.5, step=0.01)
 
-# 🔮 Предсказание
-st.sidebar.subheader("🧠 Результат предсказания")
-prediction, proba = predict_single_passenger(model, df_encoded.drop("Survived", axis=1), user_input)
+features = ['Pclass', 'Age', 'SibSp', 'Parch', 'Fare', 'Sex', 'Embarked']
+df = df[features + ['Survived']]
+df = pd.get_dummies(df, columns=['Sex', 'Embarked'], drop_first=True)
 
-label = "✅ Выжил" if prediction == 1 else "❌ Не выжил"
-st.sidebar.markdown(f"### Предсказание: {label}")
+X = df.drop("Survived", axis=1)
+y = df["Survived"]
 
-st.sidebar.write("Вероятности:")
-st.sidebar.progress(proba[1])  # вероятность выживания
-st.sidebar.markdown(f"Выживание: **{proba[1]*100:.1f}%**")
-st.sidebar.markdown(f"Не выжил: **{proba[0]*100:.1f}%**")
+if st.button("🚀 Обучить модель"):
+    X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=random_state)
+
+    model = RandomForestClassifier(
+        n_estimators=n_estimators,
+        max_depth=max_depth,
+        min_samples_split=min_samples_split,
+        random_state=random_state
+    )
+    model.fit(X_train, y_train)
+
+    # Предсказания вероятностей
+    y_train_proba = model.predict_proba(X_train)[:, 1]
+    y_test_proba = model.predict_proba(X_test)[:, 1]
+
+    # Применение порога
+    y_train_pred = (y_train_proba >= threshold).astype(int)
+    y_test_pred = (y_test_proba >= threshold).astype(int)
+
+    # Метрики
+    train_acc = accuracy_score(y_train, y_train_pred)
+    test_acc = accuracy_score(y_test, y_test_pred)
+    roc_auc = roc_auc_score(y_test, y_test_proba)
+
+    col1, col2, col3 = st.columns(3)
+    col1.metric("🎯 Train Accuracy", f"{train_acc:.2%}")
+    col2.metric("🧪 Test Accuracy", f"{test_acc:.2%}")
+    col3.metric("📈 ROC AUC", f"{roc_auc:.3f}")
+
+    st.success("✅ Модель успешно обучена!")
+
+    # ROC-кривая
+    fpr, tpr, _ = roc_curve(y_test, y_test_proba)
+    fig = px.area(
+        x=fpr, y=tpr,
+        title=f"ROC-кривая (AUC={roc_auc:.3f})",
+        labels=dict(x='False Positive Rate', y='True Positive Rate'),
+        width=600, height=400
+    )
+    fig.add_shape(
+        type='line', line=dict(dash='dash'),
+        x0=0, x1=1, y0=0, y1=1
+    )
+    st.plotly_chart(fig)
+
+else:
+    st.info("Установите параметры и нажмите кнопку для обучения модели.")
